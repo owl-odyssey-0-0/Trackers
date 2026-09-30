@@ -64,7 +64,7 @@
     font-size: 0.92rem; font-weight: 500; color: var(--ink-soft); cursor: pointer; white-space: nowrap;
     transition: transform .15s ease, box-shadow .15s ease; }
   .tab.active { color: var(--white); border-color: transparent; box-shadow: 0 3px 0 rgba(0,0,0,0.12); transform: translateY(-1px); background: var(--tab-color, var(--accent)); }
-  .tab { transition: transform .14s ease, box-shadow .14s ease; touch-action: pan-x; }
+  .tab { transition: transform .14s ease, box-shadow .14s ease; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   .tab.dragging { transform: scale(1.07); box-shadow: 0 6px 14px rgba(0,0,0,0.2); opacity: 0.92; z-index: 5; }
   .tab .mini-btn { display: none; margin-left: 2px; font-size: 0.78rem; padding: 2px 4px; }
   .tab-row.edit-mode .tab .mini-btn { display: inline-block; }
