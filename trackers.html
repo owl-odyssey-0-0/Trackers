@@ -64,6 +64,8 @@
     font-size: 0.92rem; font-weight: 500; color: var(--ink-soft); cursor: pointer; white-space: nowrap;
     transition: transform .15s ease, box-shadow .15s ease; }
   .tab.active { color: var(--white); border-color: transparent; box-shadow: 0 3px 0 rgba(0,0,0,0.12); transform: translateY(-1px); background: var(--tab-color, var(--accent)); }
+  .tab { transition: transform .14s ease, box-shadow .14s ease; touch-action: pan-x; }
+  .tab.dragging { transform: scale(1.07); box-shadow: 0 6px 14px rgba(0,0,0,0.2); opacity: 0.92; z-index: 5; }
   .tab .mini-btn { display: none; margin-left: 2px; font-size: 0.78rem; padding: 2px 4px; }
   .tab-row.edit-mode .tab .mini-btn { display: inline-block; }
   .tab-row.edit-mode .tab { animation: wiggle 0.28s ease-in-out infinite alternate; }
@@ -427,6 +429,89 @@
     return computeHealthStats(stamps);
   }
 
+  // ---------------- long-press drag reorder for tabs ----------------
+  const LONG_PRESS_MS = 380;
+  const MOVE_CANCEL_PX = 8;
+  let dragState = null;
+  let justDraggedTab = false;
+
+  function tabPointerDown(e, habitId){
+    if (e.target.closest('.mini-btn')) return;
+    if (dragState) return;
+    dragState = {
+      habitId, sectionId: currentSection,
+      startX: e.clientX, startY: e.clientY,
+      dragging: false,
+      timer: null
+    };
+    dragState.timer = setTimeout(() => {
+      if (!dragState) return;
+      dragState.dragging = true;
+      const el = document.querySelector(`#tabRow .tab[data-habit-id="${dragState.habitId}"]`);
+      if (el) el.classList.add('dragging');
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch(err){} }
+    }, LONG_PRESS_MS);
+  }
+
+  document.addEventListener('pointermove', (e) => {
+    if (!dragState) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    if (!dragState.dragging){
+      if (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX){
+        clearTimeout(dragState.timer);
+        dragState = null;
+      }
+      return;
+    }
+    e.preventDefault();
+    const id = dragState.sectionId;
+    const tabs = Array.from(document.querySelectorAll('#tabRow .tab'));
+    const habits = store[id].habits;
+    const curIndex = habits.findIndex(h => h.id === dragState.habitId);
+    if (curIndex === -1) return;
+    let targetIndex = curIndex;
+    for (let i = 0; i < tabs.length; i++){
+      const rect = tabs[i].getBoundingClientRect();
+      const center = rect.left + rect.width / 2;
+      if (e.clientX >= rect.left && e.clientX <= rect.right){
+        targetIndex = i;
+        break;
+      }
+      if (e.clientX < center){ targetIndex = i; break; }
+    }
+    if (targetIndex !== curIndex){
+      const [moved] = habits.splice(curIndex, 1);
+      habits.splice(targetIndex, 0, moved);
+      renderTabs();
+      renderQuickRow();
+      const el = document.querySelector(`#tabRow .tab[data-habit-id="${dragState.habitId}"]`);
+      if (el) el.classList.add('dragging');
+    }
+  }, { passive: false });
+
+  document.addEventListener('pointerup', () => {
+    if (!dragState) return;
+    if (dragState.dragging){
+      justDraggedTab = true;
+      touchAndSave(dragState.sectionId);
+      const el = document.querySelector(`#tabRow .tab[data-habit-id="${dragState.habitId}"]`);
+      if (el) el.classList.remove('dragging');
+    } else {
+      clearTimeout(dragState.timer);
+    }
+    dragState = null;
+  });
+
+  document.addEventListener('pointercancel', () => {
+    if (dragState){
+      clearTimeout(dragState.timer);
+      const el = document.querySelector(`#tabRow .tab[data-habit-id="${dragState.habitId}"]`);
+      if (el) el.classList.remove('dragging');
+    }
+    dragState = null;
+  });
+
   // ---------------- top segmented section tabs ----------------
   function renderSegTabs(){
     const wrap = document.getElementById('segTabs');
@@ -490,9 +575,12 @@
     store[id].habits.forEach(h => {
       const el = document.createElement('div');
       el.className = 'tab' + (h.id === activeId[id] ? ' active' : '');
+      el.dataset.habitId = h.id;
       if (h.id === activeId[id]) el.style.setProperty('--tab-color', h.color);
       el.innerHTML = `<span>${h.emoji}</span><span>${escapeHtml(h.name)}</span><span class="mini-btn" data-act="edit" data-id="${h.id}">✎</span><span class="mini-btn" data-act="del" data-id="${h.id}">✕</span>`;
+      el.addEventListener('pointerdown', (e) => tabPointerDown(e, h.id));
       el.addEventListener('click', (e) => {
+        if (justDraggedTab){ justDraggedTab = false; return; }
         if (editMode){
           const btn = e.target.closest('.mini-btn');
           if (btn && btn.dataset.act === 'del') requestDelete(id, btn.dataset.id);
